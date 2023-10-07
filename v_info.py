@@ -173,7 +173,7 @@ def find_annotation_artefacts(data_fn, model, tokenizer, input_key='sentence1', 
     for label in labels:
         for token in token_entropy_deltas[label]:
             if total_freq[token] > min_freq:
-            	token_entropy_deltas[label][token] = np.nanmean(token_entropy_deltas[label][token]) 
+                token_entropy_deltas[label][token] = np.nanmean(token_entropy_deltas[label][token]) 
             else:
                 token_entropy_deltas[label][token] = np.nan
 
