@@ -4,38 +4,31 @@ from typing import List
 import pandas as pd
 from transformers import AutoTokenizer
 
+from train import train
 from v_info import v_entropy, v_info
+from augment_shp import *
+from augment import *
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-def feasibility_check(model_name, data_dir):
-    """
-    Attribute att is feasibile if V_info(att(X) -> Y) > 0.
-    That is, it is possible to learn something using the given attribute.
-    """
+# def feasibility_check(model_name, data_dir):
+#     """
+#     Attribute att is feasibile if V_info(att(X) -> Y) > 0.
+#     That is, it is possible to learn something using the given attribute.
+#     """
 
-    # compute conditional V-info
-    print(model_name, data_name, experiment)
-    v_info_data = v_info(f"data/{data_name}_{experiment}.csv",
-            f"models/{model_name}_{data_name}_{experiment}", 
-            f"data/{data_name}_null.csv",
-            f"models/{model_name}_{data_name}_null",
-            tokenizer, out_fn=f"PVI/{model_name}_{data_name}_{experiment}.csv")
+#     # compute conditional V-info
+#     print(model_name, data_name, experiment)
+#     v_info_data = v_info(f"data/{data_name}_{experiment}.csv",
+#             f"models/{model_name}_{data_name}_{experiment}", 
+#             f"data/{data_name}_null.csv",
+#             f"models/{model_name}_{data_name}_null",
+#             tokenizer, out_fn=f"PVI/{model_name}_{data_name}_{experiment}.csv")
 
-    mean_pvi = v_info_data['PVI'].mean()
-    print(f"Mean PVI: {mean_pvi}")
+#     mean_pvi = v_info_data['PVI'].mean()
+#     print(f"Mean PVI: {mean_pvi}")
 
-
-def exclusivity_check(att_transform, data_dir):
-    """
-    """
-    pass
-
-def sufficiency_check():
-    pass
-
-
-def necessity_check():
-    pass
 
 
 """
@@ -51,9 +44,9 @@ That is, all V-usable information exists only in the given attribute.
 CHECK_TYPE_TO_DATA_TYPES = {
     'feasibility': ['null', 'att'],
     'exclusivity': ['null', 'att_inv'],
-    'sufficiency': ['att', 'full'],
-    'necessity': ['att_inv', 'full'],
-    'regular_vinfo': ['null', 'full'],
+    'sufficiency': ['att', 'std'],
+    'necessity': ['att_inv', 'std'],
+    'regular_vinfo': ['null', 'std'],
 }
 
 
@@ -72,14 +65,19 @@ def data_check(
 
 
 def main(
-    transforms,  # dict of transforms, keys must be one or more of 'null', 'att', 'full'
+    transforms,  # dict of transforms, keys must be one or more of 'null', 'att', 'std'
     check_types: List[str],
     train_size=1.0,
-    data_dir='data/'
+    data_dir='data/',
+    model_name_or_path='meta-llama/Llama-2-7b-hf',
+    model_output_dir='/scr-ssd/chenyuz/llama2-models/',
 ):
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        logging.info('Data directory does not exist, created it.')
 
-    data_fns_and_models = {}  # maps data type to [data fn, model]
-    # data type can be 'null', 'att', 'att_inv', or 'full'
+    data_fns_and_models = {}  # maps data type to list of resources [train_data_fn, test_data_fn, model]
+    # data type can be 'null', 'att', 'att_inv', or 'std'
 
     for check_type in check_types:
         assert check_type in CHECK_TYPE_TO_DATA_TYPES, f"Check type {check_type} not supported"
@@ -87,26 +85,52 @@ def main(
             data_fns_and_models[data_type] = []
 
     # compute data transforms
+    logging.info('Computing data transforms...')
+    print('Computing data transforms!')
     for data_type in data_fns_and_models.keys():
+        logging.info('Computing data transforms for %s' % data_type)
         if data_type == 'att_inv':
             try:
-                transforms['att'](data_dir, train_size).transform(inverse=True)
-                data_fns_and_models[data_type].append(
-                    transforms['att'].get_output_fn(inverse=True, train=True))
+                transform_obj = transforms['att'](data_dir, train_size)
+                train_fn, test_fn = transform_obj.get_output_fn(inverse=True)
+                if not os.path.exists(train_fn) or not os.path.exists(test_fn):
+                    transform_obj.transform(inverse=True)
             except:
                 raise NotImplementedError('Inverse attribute transformation not implemented')
         else:
-            transforms[data_type](data_dir, train_size).transform()
-            data_fns_and_models[data_type].append(
-                transforms[data_type].get_output_fn(train=True))
+            transform_obj = transforms[data_type](data_dir, train_size)
+            train_fn, test_fn = transform_obj.get_output_fn()
+            if not os.path.exists(train_fn) or not os.path.exists(test_fn):
+                transform_obj.transform()
+        data_fns_and_models[data_type].extend([train_fn, test_fn])
 
-    # train model (TODO: sample a small set of data?)
+    # train models (TODO: sample a small set of data?)
+    logging.info('Training models...')
+    for data_type in data_fns_and_models.keys():
+        train_data_fn, test_data_fn = data_fns_and_models[data_type]
+        model_dir_name = train_data_fn.split('/')[-1].split('.')[0]
+        model_dir = os.path.join(model_output_dir, model_dir_name)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+            logging.info('Model directory does not exist, created it.')
 
+        if os.listdir(model_dir):
+            logging.info('Model for %s already exists' % data_type)
+            continue
 
+        logging.info('Training model for %s' % data_type)
+        train(
+            model_name_or_path,
+            train_data_fn,
+            test_data_fn,
+            output_dir=model_dir
+        )
+        data_fns_and_models[data_type].append(model_dir)
 
     # compute v-infos
-
+    logging.info('Computing v-infos...')
     for test_name in check_types:
+        logging.info('Computing v-infos for %s' % test_name)
         requested_data_types = CHECK_TYPE_TO_DATA_TYPES[test]
 
         transform_name = transform['att'].name if test_name != 'regular_vinfo' else ''
@@ -132,4 +156,11 @@ def main(
 
 
 if __name__ == '__main__':
-    main()
+    main(
+        # transforms={'null': SHPNullTransformation, 'att': SHPWordLengthTransformation, 'std': SHPTransformation},
+        transforms={'null': DWMWNullTransformation, 'att': DWMWVocabTransformation, 'std': DWMWStandardTransformation},
+        check_types=['feasibility'],
+        train_size=1.0,  # only 1.0 is supported for DWMW
+        data_dir='checklist_data/',
+    )
+

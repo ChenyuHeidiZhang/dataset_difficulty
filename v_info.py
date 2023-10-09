@@ -28,11 +28,12 @@ def v_entropy(data_fn, model, tokenizer, input_key='sentence1', batch_size=100):
         Tuple of (V-entropies, correctness of predictions, predicted labels).
         Each is a List of n entries (n = number of examples in data_fn).
     """
-    # added for gpt2 
-    if tokenizer == 'gpt2':
+    # added for gpt2
+    if isinstance(tokenizer, str) and (tokenizer == 'gpt2' or 'llama' in tokenizer):
         tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
-        model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
+        if isinstance(model, str):
+            model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
 
     classifier = pipeline('text-classification', model=model, tokenizer=tokenizer, return_all_scores=True, device=0)
     data = pd.read_csv(data_fn)

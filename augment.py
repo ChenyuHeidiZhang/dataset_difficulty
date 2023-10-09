@@ -83,7 +83,7 @@ class MultiNLITransformation(object):
 
 
 class DWMWTransformation(object):
-    def __init__(self, name, output_dir):
+    def __init__(self, name, output_dir, train_size=1.0):
         self.data = pd.read_csv('data/dwmw/labeled_data.csv').rename({"tweet" : "sentence1", "class" : "label"}, axis=1)
         self.name = name
         self.output_dir = output_dir
@@ -91,9 +91,19 @@ class DWMWTransformation(object):
     def transformation(self, example):
         raise NotImplementedError
 
-    def transform(self):
+    def inverse_transformation(self, example):
+        raise NotImplementedError
+
+    def get_output_fn(self, inverse=False):
+        name = f'{self.name}_inverse' if inverse else self.name
+        fn = os.path.join(self.output_dir, f'dwmw_{name}.csv')
+        return fn, fn  # use the same file for train and test
+
+    def transform(self, inverse=False):
         logging.info(f'Applying {self.name} to DWMW')
-        self.data.apply(self.transformation, axis=1).to_csv(
+
+        transform_func = self.inverse_transformation if inverse else self.transformation
+        self.data.apply(transform_func, axis=1).to_csv(
             os.path.join(self.output_dir, f'dwmw_{self.name}.csv'))
 
 
@@ -246,7 +256,7 @@ class MultiNLINullTransformation(MultiNLITransformation):
 
 
 class DWMWStandardTransformation(DWMWTransformation):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, train_size=1.0):
         super().__init__('std', output_dir)
 
     def transformation(self, example):
@@ -254,7 +264,7 @@ class DWMWStandardTransformation(DWMWTransformation):
          
 
 class DWMWNullTransformation(DWMWTransformation):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, train_size=1.0):
         super().__init__('null', output_dir)
 
     def transformation(self, example):
@@ -263,7 +273,7 @@ class DWMWNullTransformation(DWMWTransformation):
 
 
 class DWMWVocabTransformation(DWMWTransformation):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, train_size=1.0):
         super().__init__('bad_vocab', output_dir)
         # potentially offensive words were manually selected
         self.bad_words = [ 'nigga', 'niggas', 'niggah', 'niggahs', 'hoe', 'hoes', 'bitch', 'bitches', 'whitey', 'white trash', 'cracker', 'crackers', 'beaner', 'beaners',
@@ -282,9 +292,20 @@ class DWMWVocabTransformation(DWMWTransformation):
 
         return example
 
+    def inverse_transformation(self, example):
+        pattern = re.compile(rf"\b({'|'.join(self.bad_words)})\b(?!\b[^ ]+\b)", re.IGNORECASE)
+        example['sentence1'] = re.sub(pattern, "", example['sentence1'])
+        example['sentence1'] = example['sentence1'].translate(str.maketrans('', '', string.punctuation))
+        example['sentence1'] = example['sentence1'].strip()
+
+        if example['sentence1'] == "":
+            example['sentence1'] = ' ' #using only empty string can yield problems
+
+        return example
+
 
 class DWMWSentimentVocabTransformation(DWMWTransformation):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, train_size=1.0):
         super().__init__('sentiment_vocab', output_dir)
         self.bad_vocab = DWMWVocabTransformation(output_dir)
 
@@ -307,7 +328,7 @@ class DWMWSentimentVocabTransformation(DWMWTransformation):
 
 
 class DWMWSentimentTransformation(DWMWTransformation):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, train_size=1.0):
         super().__init__('sentiment', output_dir)
         self.bad_vocab = DWMWVocabTransformation(output_dir)
 
