@@ -17,23 +17,18 @@ from transformers import (
     AutoTokenizer,
     DataCollatorWithPadding,
     PretrainedConfig,
-    SchedulerType,
     default_data_collator,
     get_scheduler,
     set_seed,
 )
-
-# tokenizer = transformers.AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
-# tokenizer.pad_token = tokenizer.eos_token
-# m = transformers.AutoModelForSequenceClassification.from_pretrained("meta-llama/Llama-2-7b-hf", , pad_token_id=tokenizer.eos_token_id)
-# classifier = transformers.pipeline('text-classification', model=m, tokenizer=tokenizer, return_all_scores=True)
+from peft import (
+    get_peft_model,
+    LoraConfig,
+)
 
 logger = logging.getLogger(__name__)
 
-task_to_keys = {
-    "dwmw": ("sentence1", None),
-    "shp": ("sentence1", None),
-}
+# currently supported tasks: dwmw, shp
 
 
 def check_input_args(train_file, validation_file, output_dir):
@@ -53,16 +48,17 @@ def train(
     model_name_or_path,
     train_file,
     validation_file,
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
+    per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
     pad_to_max_length=False,
     max_length=4096,
     learning_rate=5e-5,
     num_train_epochs=1,
     max_train_steps=None,
     num_warmup_steps=0,
-    weight_decay=0.0,
     gradient_accumulation_steps=1,
+    enable_fsdp=False,  # not supported yet
+    use_lora=True,
     output_dir='/nlp/scr/chenyuz',
     sentence1_key='sentence1',
     sentence2_key=None,
@@ -127,6 +123,12 @@ def train(
     model.config.label2id = label_to_id
     model.config.id2label = {id: label for label, id in config.label2id.items()}
 
+    if use_lora:
+        peft_config = LoraConfig(
+            task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
+
     padding = "max_length" if pad_to_max_length else False
     max_length = min(max_length, tokenizer.model_max_length)
 
@@ -168,19 +170,7 @@ def train(
     eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=per_device_eval_batch_size)
 
     # Optimizer
-    # Split weights in two groups, one with weight decay and the other not.
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
+    optimizer = AdamW(params=model.parameters(), lr=learning_rate)
 
     # Prepare everything with our `accelerator`.
     model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(

@@ -7,10 +7,13 @@ import numpy as np
 from tqdm import tqdm
 import argparse
 
+from peft import PeftModel
+
 parser = argparse.ArgumentParser()
 
 
-def v_entropy(data_fn, model, tokenizer, input_key='sentence1', batch_size=100):
+def v_entropy(
+    data_fn, model, tokenizer, input_key='sentence1', batch_size=100, lora_model_path=None):
     """
     Calculate the V-entropy (in bits) on the data given in data_fn. This can be
     used to calculate both the V-entropy and conditional V-entropy (for the
@@ -19,25 +22,28 @@ def v_entropy(data_fn, model, tokenizer, input_key='sentence1', batch_size=100):
 
     Args:
         data_fn: path to data; should contain the label in the 'label' column
-        model: path to saved model or model name in HuggingFace library
+        model: path to saved model or model name in HuggingFace library; this is the base model if using LoRA
         tokenizer: path to tokenizer or tokenizer name in HuggingFace library
         input_key: column name of X variable in data_fn
         batch_size: data batch_size
+        lora_model_path: path to saved LoRA model; None if not using LoRA
 
     Returns:
         Tuple of (V-entropies, correctness of predictions, predicted labels).
         Each is a List of n entries (n = number of examples in data_fn).
     """
-    # added for gpt2
-    if isinstance(tokenizer, str) and (tokenizer == 'gpt2' or 'llama' in tokenizer):
+    # added for gpt2 or llama
+    if tokenizer == 'gpt2' or 'llama' in tokenizer.lower():
         tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
-        if isinstance(model, str):
-            model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
+        model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
+        if lora_model_path:
+            model = PeftModel.from_pretrained(model, lora_model_path)
 
+    # pipeline can take either paths or instantiations of models and tokenizers
     classifier = pipeline('text-classification', model=model, tokenizer=tokenizer, return_all_scores=True, device=0)
     data = pd.read_csv(data_fn)
-    
+
     entropies = []
     correct = []
     predicted_labels = []

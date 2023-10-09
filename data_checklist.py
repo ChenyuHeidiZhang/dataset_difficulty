@@ -12,24 +12,6 @@ from augment import *
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# def feasibility_check(model_name, data_dir):
-#     """
-#     Attribute att is feasibile if V_info(att(X) -> Y) > 0.
-#     That is, it is possible to learn something using the given attribute.
-#     """
-
-#     # compute conditional V-info
-#     print(model_name, data_name, experiment)
-#     v_info_data = v_info(f"data/{data_name}_{experiment}.csv",
-#             f"models/{model_name}_{data_name}_{experiment}", 
-#             f"data/{data_name}_null.csv",
-#             f"models/{model_name}_{data_name}_null",
-#             tokenizer, out_fn=f"PVI/{model_name}_{data_name}_{experiment}.csv")
-
-#     mean_pvi = v_info_data['PVI'].mean()
-#     print(f"Mean PVI: {mean_pvi}")
-
-
 
 """
 Feasibility Test:
@@ -51,17 +33,27 @@ CHECK_TYPE_TO_DATA_TYPES = {
 
 
 def data_check(
-    data_fn_l, model_l, data_fn_r, model_r, tokenizer, out_fn, input_key='sentence1'
+    data_fn_l, model_l, data_fn_r, model_r, model_name_or_path,
+    out_fn, input_key='sentence1', use_lora=True
 ):
     data = pd.read_csv(data_fn)
-    data['H_yb'], _, _ = v_entropy(data_fn_l, model_l, tokenizer, input_key=input_key) 
-    data['H_yx'], data['correct_yx'], data['predicted_label'] = v_entropy(
-        data_fn_r, model_r, tokenizer, input_key=input_key)
+    tokenizer = model_name_or_path
+
+    if use_lora:
+        data['H_yb'], _, _ = v_entropy(
+            data_fn_l, model_name_or_path, tokenizer, input_key=input_key, lora_model_path=model_l) 
+        data['H_yx'], data['correct_yx'], data['predicted_label'] = v_entropy(
+            data_fn_r, model_name_or_path, tokenizer, input_key=input_keym lora_model_path=model_r)
+    else:
+        data['H_yb'], _, _ = v_entropy(
+            data_fn_l, model_l, tokenizer, input_key=input_key) 
+        data['H_yx'], data['correct_yx'], data['predicted_label'] = v_entropy(
+            data_fn_r, model_r, tokenizer, input_key=input_key)
+
     data['PVI'] = data['H_yb'] - data['H_yx']
     if out_fn:
         data.to_csv(out_fn)
     return data
-
 
 
 def main(
@@ -71,6 +63,7 @@ def main(
     data_dir='data/',
     model_name_or_path='meta-llama/Llama-2-7b-hf',
     model_output_dir='/scr-ssd/chenyuz/llama2-models/',
+    use_lora=True,
 ):
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -78,22 +71,22 @@ def main(
 
     data_fns_and_models = {}  # maps data type to list of resources [train_data_fn, test_data_fn, model]
     # data type can be 'null', 'att', 'att_inv', or 'std'
+    # model can be a directory or the actual model
 
     for check_type in check_types:
         assert check_type in CHECK_TYPE_TO_DATA_TYPES, f"Check type {check_type} not supported"
         for data_type in CHECK_TYPE_TO_DATA_TYPES[check_type]:
             data_fns_and_models[data_type] = []
 
-    # compute data transforms
-    logging.info('Computing data transforms...')
-    print('Computing data transforms!')
+    # compute / find data transforms
+    logging.info('Looking for existing data transform files...')
     for data_type in data_fns_and_models.keys():
-        logging.info('Computing data transforms for %s' % data_type)
         if data_type == 'att_inv':
             try:
                 transform_obj = transforms['att'](data_dir, train_size)
                 train_fn, test_fn = transform_obj.get_output_fn(inverse=True)
                 if not os.path.exists(train_fn) or not os.path.exists(test_fn):
+                    logging.info('Computing data transforms for %s' % data_type)
                     transform_obj.transform(inverse=True)
             except:
                 raise NotImplementedError('Inverse attribute transformation not implemented')
@@ -101,11 +94,12 @@ def main(
             transform_obj = transforms[data_type](data_dir, train_size)
             train_fn, test_fn = transform_obj.get_output_fn()
             if not os.path.exists(train_fn) or not os.path.exists(test_fn):
+                logging.info('Computing data transforms for %s' % data_type)
                 transform_obj.transform()
         data_fns_and_models[data_type].extend([train_fn, test_fn])
 
-    # train models (TODO: sample a small set of data?)
-    logging.info('Training models...')
+    # train / find models
+    logging.info('Trying to find models...')
     for data_type in data_fns_and_models.keys():
         train_data_fn, test_data_fn = data_fns_and_models[data_type]
         model_dir_name = train_data_fn.split('/')[-1].split('.')[0]
@@ -113,19 +107,19 @@ def main(
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
             logging.info('Model directory does not exist, created it.')
+        data_fns_and_models[data_type].append(model_dir)
 
         if os.listdir(model_dir):
             logging.info('Model for %s already exists' % data_type)
             continue
 
         logging.info('Training model for %s' % data_type)
-        train(
+        _, _ = train(
             model_name_or_path,
             train_data_fn,
             test_data_fn,
             output_dir=model_dir
         )
-        data_fns_and_models[data_type].append(model_dir)
 
     # compute v-infos
     logging.info('Computing v-infos...')
@@ -136,9 +130,11 @@ def main(
         transform_name = transform['att'].name if test_name != 'regular_vinfo' else ''
         out_fn=f"PVI/{test_name}_{transform_name}_{transform['att'].data_name}_{model_name}.csv"
 
-        data_fn_l, model_name_l = data_fns_and_models[requested_data_types[0]]
-        data_fn_r, model_name_r = data_fns_and_models[requested_data_types[1]]
-        data = data_check(data_fn_l, model_name_l, data_fn_r, model_name_r, tokenizer, out_fn)
+        _, data_fn_l, model_l = data_fns_and_models[requested_data_types[0]]
+        _, data_fn_r, model_r = data_fns_and_models[requested_data_types[1]]
+        data = data_check(
+            data_fn_l, model_l, data_fn_r, model_r, model_name_or_path, out_fn,
+            use_lora=use_lora)
 
         mean_pvi = data['PVI'].mean()
         print(f"{test_name} test, mean PVI: {mean_pvi}")
