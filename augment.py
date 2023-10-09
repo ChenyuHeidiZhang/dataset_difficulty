@@ -105,8 +105,8 @@ class DWMWTransformation(object):
         logging.info(f'Applying {self.name} to DWMW')
 
         transform_func = self.inverse_transformation if inverse else self.transformation
-        self.data.apply(transform_func, axis=1).to_csv(
-            os.path.join(self.output_dir, f'dwmw_{self.name}.csv'))
+        fn, _ = self.get_output_fn(inverse)
+        self.data.apply(transform_func, axis=1).to_csv(fn)
 
 
 class COLATransformation(object):
