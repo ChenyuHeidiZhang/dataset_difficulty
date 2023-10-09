@@ -1,4 +1,4 @@
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
 from tokenizers.pre_tokenizers import Whitespace
 import os
 import torch
@@ -36,9 +36,13 @@ def v_entropy(
     if tokenizer == 'gpt2' or 'llama' in tokenizer.lower():
         tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
-        model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
+
         if lora_model_path:
+            config = AutoConfig.from_pretrained(lora_model_path)  # updated base model config.json is saved in the lora model path
+            model = AutoModelForSequenceClassification.from_pretrained(model, config=config)
             model = PeftModel.from_pretrained(model, lora_model_path)
+        else:
+            model = AutoModelForSequenceClassification.from_pretrained(model, pad_token_id=tokenizer.eos_token_id)
 
     # pipeline can take either paths or instantiations of models and tokenizers
     classifier = pipeline('text-classification', model=model, tokenizer=tokenizer, return_all_scores=True, device=0)

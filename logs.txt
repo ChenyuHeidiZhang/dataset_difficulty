@@ -1,0 +1,4 @@
+DWMW null: {'accuracy': 0.7743211072105879}
+DWMW vocab: {'accuracy': 0.8742737249838606}
+feasibility test, mean PVI: 0.48816025992392886
+

@@ -59,7 +59,7 @@ def train(
     gradient_accumulation_steps=1,
     enable_fsdp=False,  # not supported yet
     use_lora=True,
-    output_dir='/nlp/scr/chenyuz',
+    output_dir='/scr-ssd/chenyuz/llama2-models',
     sentence1_key='sentence1',
     sentence2_key=None,
 ):
@@ -122,6 +122,8 @@ def train(
     label_to_id = {v: i for i, v in enumerate(label_list)}
     model.config.label2id = label_to_id
     model.config.id2label = {id: label for label, id in config.label2id.items()}
+
+    model.config.save_pretrained(output_dir)
 
     if use_lora:
         peft_config = LoraConfig(
@@ -246,3 +248,4 @@ def train(
 
 
     return model, tokenizer
+

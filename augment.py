@@ -83,6 +83,8 @@ class MultiNLITransformation(object):
 
 
 class DWMWTransformation(object):
+    data_name = 'dwmw'
+
     def __init__(self, name, output_dir, train_size=1.0):
         self.data = pd.read_csv('data/dwmw/labeled_data.csv').rename({"tweet" : "sentence1", "class" : "label"}, axis=1)
         self.name = name
@@ -256,6 +258,8 @@ class MultiNLINullTransformation(MultiNLITransformation):
 
 
 class DWMWStandardTransformation(DWMWTransformation):
+    name = 'std'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('std', output_dir)
 
@@ -264,6 +268,8 @@ class DWMWStandardTransformation(DWMWTransformation):
          
 
 class DWMWNullTransformation(DWMWTransformation):
+    name = 'null'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('null', output_dir)
 
@@ -273,6 +279,8 @@ class DWMWNullTransformation(DWMWTransformation):
 
 
 class DWMWVocabTransformation(DWMWTransformation):
+    name = 'bad_vocab'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('bad_vocab', output_dir)
         # potentially offensive words were manually selected
@@ -305,6 +313,8 @@ class DWMWVocabTransformation(DWMWTransformation):
 
 
 class DWMWSentimentVocabTransformation(DWMWTransformation):
+    name = 'sentiment_vocab'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('sentiment_vocab', output_dir)
         self.bad_vocab = DWMWVocabTransformation(output_dir)
@@ -328,6 +338,8 @@ class DWMWSentimentVocabTransformation(DWMWTransformation):
 
 
 class DWMWSentimentTransformation(DWMWTransformation):
+    name = 'sentiment'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('sentiment', output_dir)
         self.bad_vocab = DWMWVocabTransformation(output_dir)

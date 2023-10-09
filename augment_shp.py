@@ -7,6 +7,8 @@ from format_shp import PreferencePrompt, sample_shp_data_from_hf, RESPONSE_TOKEN
 
 
 class SHPTransformation(object):
+    data_name = 'shp'
+
     def __init__(
             self, name, output_dir='data/', train_size=1.0,
             tokenizer=AutoTokenizer.from_pretrained('meta-llama/Llama-2-7b-hf')
@@ -18,7 +20,6 @@ class SHPTransformation(object):
             train_size: fraction of the training data to use
         """
         self.train_data, self.test_data = sample_shp_data_from_hf(2.0, 5)
-        self.data_name = 'shp'
         self.name = name
         self.output_dir = output_dir
         self.train_size = train_size
@@ -67,6 +68,8 @@ class SHPTransformation(object):
 
 
 class SHPStandardTransformation(SHPTransformation):
+    name = 'std'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('std', output_dir, train_size)
 
@@ -78,6 +81,8 @@ class SHPStandardTransformation(SHPTransformation):
 
 
 class SHPNullTransformation(SHPTransformation):
+    name = 'null'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('null', output_dir, train_size)
 
@@ -89,6 +94,8 @@ class SHPNullTransformation(SHPTransformation):
 
 
 class SHPWordLengthTransformation(SHPTransformation):
+    name = 'word_length'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('word_length', output_dir, train_size)
 
@@ -114,6 +121,8 @@ class SHPWordLengthTransformation(SHPTransformation):
 
 
 class SHPRawOverlapTransformation(SHPTransformation):
+    name = 'raw_overlap'
+
     def __init__(self, output_dir, train_size=1.0):
         super().__init__('raw_overlap', output_dir, train_size)
 

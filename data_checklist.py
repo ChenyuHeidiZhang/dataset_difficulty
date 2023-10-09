@@ -36,14 +36,14 @@ def data_check(
     data_fn_l, model_l, data_fn_r, model_r, model_name_or_path,
     out_fn, input_key='sentence1', use_lora=True
 ):
-    data = pd.read_csv(data_fn)
+    data = pd.read_csv(data_fn_r)
     tokenizer = model_name_or_path
 
     if use_lora:
         data['H_yb'], _, _ = v_entropy(
             data_fn_l, model_name_or_path, tokenizer, input_key=input_key, lora_model_path=model_l) 
         data['H_yx'], data['correct_yx'], data['predicted_label'] = v_entropy(
-            data_fn_r, model_name_or_path, tokenizer, input_key=input_keym lora_model_path=model_r)
+            data_fn_r, model_name_or_path, tokenizer, input_key=input_key, lora_model_path=model_r)
     else:
         data['H_yb'], _, _ = v_entropy(
             data_fn_l, model_l, tokenizer, input_key=input_key) 
@@ -125,13 +125,14 @@ def main(
     logging.info('Computing v-infos...')
     for test_name in check_types:
         logging.info('Computing v-infos for %s' % test_name)
-        requested_data_types = CHECK_TYPE_TO_DATA_TYPES[test]
-
-        transform_name = transform['att'].name if test_name != 'regular_vinfo' else ''
-        out_fn=f"PVI/{test_name}_{transform_name}_{transform['att'].data_name}_{model_name}.csv"
+        requested_data_types = CHECK_TYPE_TO_DATA_TYPES[test_name]
 
         _, data_fn_l, model_l = data_fns_and_models[requested_data_types[0]]
         _, data_fn_r, model_r = data_fns_and_models[requested_data_types[1]]
+        transform_name = transforms['att'].name if test_name != 'regular_vinfo' else ''
+        model_name = model_name_or_path.split('/')[-1]
+        out_fn=f"checklist_PVI/{test_name}_{transforms['att'].data_name}_{transform_name}_{model_name}.csv"
+
         data = data_check(
             data_fn_l, model_l, data_fn_r, model_r, model_name_or_path, out_fn,
             use_lora=use_lora)
@@ -155,7 +156,7 @@ if __name__ == '__main__':
     main(
         # transforms={'null': SHPNullTransformation, 'att': SHPWordLengthTransformation, 'std': SHPTransformation},
         transforms={'null': DWMWNullTransformation, 'att': DWMWVocabTransformation, 'std': DWMWStandardTransformation},
-        check_types=['feasibility'],
+        check_types=['necessity', 'exclusivity', 'sufficiency'],
         train_size=1.0,  # only 1.0 is supported for DWMW
         data_dir='checklist_data/',
     )
